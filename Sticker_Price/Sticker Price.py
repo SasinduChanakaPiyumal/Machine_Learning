@@ -287,34 +287,31 @@ sg_holidays = holidays.country_holidays('SG') # Singapore
 # In[36]:
 
 
-def set_holiday(row):
-    VAL_HOLIDAY = 1
-    if row["country"] == "Canada" and row["date"] in ca_holidays:
-        row["holiday"] = VAL_HOLIDAY
+# The previous row-by-row .apply is inefficient. A vectorized approach is much faster.
+holiday_map = {
+    'Canada': ca_holidays, 'Finland': fi_holidays, 'Italy': it_holidays,
+    'Kenya': ke_holidays, 'Norway': no_holidays, 'Singapore': sg_holidays
+}
+# Pre-computing sets of holiday timestamps for fast 'isin' lookup.
+holiday_timestamp_sets = {
+    country: set(pd.to_datetime(list(hdays.keys()))) for country, hdays in holiday_map.items()
+}
 
-    elif row["country"] == "Finland" and row["date"] in fi_holidays:
-        row["holiday"] = VAL_HOLIDAY
+# Create new DataFrames to match the original logic, which used .apply to create new ones.
+df_train = train_df.copy()
+df_test = test_df.copy()
 
-    elif row["country"] == "Italy" and row["date"] in it_holidays:
-        row["holiday"] = VAL_HOLIDAY
+# Vectorized holiday assignment for training data
+train_normalized_dates = df_train['date'].dt.normalize()
+for country, h_set in holiday_timestamp_sets.items():
+    mask = (df_train['country'] == country) & (train_normalized_dates.isin(h_set))
+    df_train.loc[mask, 'holiday'] = 1
 
-    elif row["country"] == "Kenya" and row["date"] in ke_holidays:
-        row["holiday"] = VAL_HOLIDAY
-    
-    elif row["country"] == "Norway" and row["date"] in no_holidays:
-        row["holiday"] = VAL_HOLIDAY
-
-    elif row["country"] == "Singapore" and row["date"] in sg_holidays:
-        row["holiday"] = VAL_HOLIDAY
-
-    return row
-
-
-# In[37]:
-
-
-df_train = train_df.apply(set_holiday, axis=1)
-df_test = test_df.apply(set_holiday, axis=1)
+# Vectorized holiday assignment for test data
+test_normalized_dates = df_test['date'].dt.normalize()
+for country, h_set in holiday_timestamp_sets.items():
+    mask = (df_test['country'] == country) & (test_normalized_dates.isin(h_set))
+    df_test.loc[mask, 'holiday'] = 1
 
 
 # In[38]:
@@ -328,8 +325,8 @@ df_train
 # In[39]:
 
 
-df_train_encoded = pd.get_dummies(df_train, columns=['country','store','product'])
-df_test_encoded = pd.get_dummies(df_test, columns=['country','store','product'])
+df_train_encoded = pd.get_dummies(df_train, columns=['country','store','product'], dtype=np.uint8)
+df_test_encoded = pd.get_dummies(df_test, columns=['country','store','product'], dtype=np.uint8)
 
 
 # #### Sine Cosine Trensformation on date features
@@ -649,4 +646,3 @@ submission_df
 
 
 submission_df.to_csv('Submission.csv', index=False)
-
